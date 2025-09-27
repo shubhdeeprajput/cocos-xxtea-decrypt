@@ -198,15 +198,37 @@ handle_apk_installation(){
 }
 
 # --- Function: Run Frida ---
-run_frida() {
-    echo "Info: Running Frida on target" #'$PACKAGE_NAME' with script '$FRIDA_JS_SCRIPT'..."
-    frida -U -f com.rettulfgame.luckyspinfun -l cocosdecrypt.js
+# run_frida() {
+#     echo "Info: Running Frida on target" #'$PACKAGE_NAME' with script '$FRIDA_JS_SCRIPT'..."
+#     frida -U -f com.rettulfgame.luckyspinfun -l cocosdecrypt.js
 
-    if [ $? -ne 0 ]; then
-      echo "Error: Frida command execution failed. Check Frida output above for details."
-      exit 1
+#     if [ $? -ne 0 ]; then
+#       echo "Error: Frida command execution failed. Check Frida output above for details."
+#       exit 1
+#     fi
+#     echo "Success: Frida executed successfully on '$PACKAGE_NAME'."
+# }
+
+run_frida_and_extract_key() {
+    echo "Info: Starting Frida to hook and capture encryption key..."
+    
+    local frida_python_script="xxtea_extractor.py"
+    local frida_js_hook="cocosdecrypt.js"
+    
+    # Call the python script and capture its output
+    ENCRYPTION_KEY=$(python3 "$frida_python_script" \
+        "com.rettulfgame.luckyspinfun" \
+        "$DECRYPT_FUNC_ADD" \
+        "'$frida_js_hook'")
+
+    if [ $? -ne 0 ] || [ -z "$ENCRYPTION_KEY" ]; then
+      echo "Error: Frida key extraction failed or returned an empty key." >&2
+      exit 1 
     fi
-    echo "Success: Frida executed successfully on '$PACKAGE_NAME'."
+
+    echo "Success: Captured Encryption Key: '$ENCRYPTION_KEY'"
+
+    # Now you can use the ENCRYPTION_KEY variable for your next steps
 }
 
 # --- Function: Cleanup Temporary Directory (called on exit or failure) ---
@@ -239,7 +261,7 @@ main() {
         handle_apk_file
     fi   
     cleanup_temp_dir $TEMP_APK_DIR
-    # run_frida                
+    run_frida_and_extract_key                
 
     echo "Success: All steps completed successfully."
 }
