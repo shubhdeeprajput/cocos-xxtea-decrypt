@@ -197,18 +197,7 @@ handle_apk_installation(){
     echo "Info: APK installed successfully."
 }
 
-# --- Function: Run Frida ---
-# run_frida() {
-#     echo "Info: Running Frida on target" #'$PACKAGE_NAME' with script '$FRIDA_JS_SCRIPT'..."
-#     frida -U -f com.rettulfgame.luckyspinfun -l cocosdecrypt.js
-
-#     if [ $? -ne 0 ]; then
-#       echo "Error: Frida command execution failed. Check Frida output above for details."
-#       exit 1
-#     fi
-#     echo "Success: Frida executed successfully on '$PACKAGE_NAME'."
-# }
-
+# ---Function: Run Frida and Extract Key ---
 run_frida_and_extract_key() {
     echo "Info: Starting Frida to hook and capture encryption key..."
     
