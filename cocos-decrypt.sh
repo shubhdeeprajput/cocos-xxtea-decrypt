@@ -1,14 +1,13 @@
 #!/bin/bash
 
-FILE_TYPE=""
-APK_PATH=""  
-DECRYPT_FUNC_ADD=""  
-PACKAGE_NAME=""
-MAIN_ACTIVITY=""
-TEMP_APK_DIR="" 
-TEMP_SPLIT_APK_DIR=""
-OUTPUT_PATH=""
-JSC_ARRAY=()
+FILE_TYPE=""                 # Variable to store type of file given by user
+APK_PATH=""                  # Variable to store user supplied path to zip or apk
+DECRYPT_FUNC_ADD=""          # Variable to store user supplied function address
+PACKAGE_NAME=""              # Variable to store package name of the app
+TEMP_APK_DIR=""              # Temporary Directory to store apk contents
+TEMP_SPLIT_APK_DIR=""        # Temporary Directory to store split apks
+OUTPUT_PATH=""               # Directory to store decrypted jsc files
+JSC_ARRAY=()                 # Array to store jsc file paths
 
 
 # --- Function: Display Usage and Exit ---
@@ -18,6 +17,19 @@ usage() {
     echo "  <base_address>: Base address of xxtea_decrypt function."
     echo "  <output_path>: Path to write decrypted jsc files."
     exit 1
+}
+
+# Function to ask for user confirmation
+confirm() {
+    read -r -p "$1 [Y/n] " response
+    case "$response" in
+        [yY][eE][sS]|[yY]) 
+            true
+            ;;
+        *)
+            false
+            ;;
+    esac
 }
 
 # --- Function: Parse Command Line Arguments ---
@@ -53,23 +65,51 @@ parse_args() {
 # --- Function: Check for Required CLI Tools ---
 check_cli_tools() {
     echo "Info: Verifying required CLI tools..."
-    local tools=(frida adb unzip) # List of tools to check
+    local tools=(frida adb unzip aapt) # List of tools to check
     local missing_tools=()
 
     for tool in "${tools[@]}"; do
         if ! command -v "$tool" &> /dev/null; then
-            missing_tools+=("$tool")
+            echo "Error: The $tool command is required."
+            if [ ! $tool = "aapt" ]; then
+                if confirm "Do you want to install it now?"; then
+                    local os_type=$(uname -s)
+                    case "$os_type" in 
+                        Linux*)
+                        apt install -y "$tool" || { echo "Error: Failed to install '$tool'. Please install manually." >&2; exit 1; }
+                        ;;
+                        Darwin*)
+                        brew install "$tool" || { echo "Error: Failed to install '$tool'. Please install manually." >&2; exit 1; }
+                        ;;
+                        *)
+                        echo "Error: Unsupported OS: $os_type." 
+                        exit 1
+                    esac
+                else
+                    echo "Info: Please Install the '$tool' and rerun the script."
+                    exit 1
+                fi
+            else
+                if confirm "Do you want to setup aapt to PATH now?"; then
+                    local android_sdk_path=""
+                    if [ -d "$HOME/Library/Android/sdk" ]; then
+                        android_sdk_path="$HOME/Library/Android/sdk"
+                    elif [ -d "$HOME/Android/sdk" ]; then
+                        android_sdk_path="$HOME/Android/sdk"
+                    else
+                        echo "Error: Android SDK not found in standard locations. Please install it." >&2
+                        exit 1
+                    fi
+                    local latest_version=$(ls -v "$android_sdk_path/build-tools" | tail -n 1)
+                    export PATH="$PATH:$android_sdk_path/build-tools/$latest_version"
+                    echo "Info: Path to aapt has been added to the current script's environment."
+                else
+                    echo "Info: Please manually add the Android SDK Build-Tools path to your PATH and re-run the script." >&2
+                    exit 1
+                fi
+            fi
         fi
     done
-
-    if [ ${#missing_tools[@]} -gt 0 ]; then
-        echo "Error: The following required CLI tools were not found:" >&2
-        for missing_tool in "${missing_tools[@]}"; do
-            echo " - $missing_tool" >&2
-        done
-        echo "Please install them or add their location to your PATH and re-run the script." >&2
-        exit 1
-    fi
     echo "Info: All required CLI tools are installed and accessible!"
 }
 
@@ -197,6 +237,16 @@ handle_apk_installation(){
     echo "Info: APK installed successfully."
 }
 
+# --- Function: Extract package name of the app ---
+get_package_name(){
+    echo "Info: Retrieving package name from APK using bundletool..."
+
+    AAPT_OUTPUT=$(aapt dump badging "$TEMP_APK_DIR")
+    PACKAGE_NAME=$(echo "$AAPT_OUTPUT" | awk '/package:/ {print $2}' | sed "s/name='//g" | sed "s/'//g")
+
+    echo "Info: Package name retrieved: $PACKAGE_NAME"
+}
+
 # ---Function: Run Frida and Extract Key ---
 run_frida_and_extract_key() {
     echo "Info: Starting Frida to hook and capture encryption key..."
@@ -206,9 +256,9 @@ run_frida_and_extract_key() {
     
     # Call the python script and capture its output
     ENCRYPTION_KEY=$(python3 "$frida_python_script" \
-        "com.rettulfgame.luckyspinfun" \
+        "$PACKAGE_NAME" \
         "$DECRYPT_FUNC_ADD" \
-        "'$frida_js_hook'")
+        "$frida_js_hook")
 
     if [ $? -ne 0 ] || [ -z "$ENCRYPTION_KEY" ]; then
       echo "Error: Frida key extraction failed or returned an empty key." >&2
@@ -249,8 +299,9 @@ main() {
     elif [ "$FILE_TYPE" == "APK" ]; then
         handle_apk_file
     fi   
-    cleanup_temp_dir $TEMP_APK_DIR
-    run_frida_and_extract_key                
+    get_package_name
+    run_frida_and_extract_key
+    cleanup_temp_dir $TEMP_APK_DIR                
 
     echo "Success: All steps completed successfully."
 }
