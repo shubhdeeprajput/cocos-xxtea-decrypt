@@ -48,6 +48,6 @@ function hookCocosCreatorDecrypt(func_address) {
     }
 }
 
-var func_address = ptr('0x' + 'DECRYPT_FUNC_ADD'); 
+var func_address = 'DECRYPT_FUNC_ADD'; 
 
 hookCocosCreatorDecrypt(func_address)

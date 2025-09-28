@@ -38,7 +38,7 @@ parse_args() {
         usage
     fi
     APK_PATH="$1"
-    DECRYPT_FUNC_ADD="$2"
+    DECRYPT_FUNC_ADD="0x$2"
     OUTPUT_PATH=${3:-"."}       # Set output path to current directory by default if none is passed
 
     echo "Info: APK Bundle Path: '$APK_PATH'"
