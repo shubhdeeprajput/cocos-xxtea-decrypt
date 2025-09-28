@@ -178,6 +178,7 @@ handle_apk_file() {
     echo "Info: Temporary extraction directory: '$TEMP_APK_DIR'"
 
     # --- Extract APK content from APK ---
+    echo "Info: Extracting APK content from APK to temporary directory..."
     if ! unzip -o -qq "$APK_PATH" -d "$TEMP_APK_DIR"; then
         echo "Error: Failed to unzip '$APK_PATH'."
         echo "Hint: Ensure apk file is valid."
@@ -193,7 +194,7 @@ handle_apk_file() {
 
 # --- Function: Handle Split APKs ---
 handle_and_install_apk_bundle() {
-    echo "Info: Handling split APK bundle and extracting jsc..."
+    echo "Info: Handling APK bundle and extracting jsc..."
 
     # Create temporary directory for extraction of split APKs
     TEMP_SPLIT_APK_DIR=$(mktemp -d -t split-apks)
@@ -215,8 +216,8 @@ handle_and_install_apk_bundle() {
     if [ $? -ne 0 ]; then echo "Error: Failed to create temporary directory." ; exit 1 ; fi
     echo "Info: Temporary apk extraction directory: '$TEMP_APK_DIR'"
 
-    # --- Extract All APK content from Split APKs ---
-    echo "Info: Extracting all APKs from ZIP to temporary directory..."
+    # --- Extract APK content from Split APKs ---
+    echo "Info: Extracting APK content from APKs to temporary directory..."
     if ! for apks in "$TEMP_SPLIT_APK_DIR"/*.apk; do unzip -o -qq "$apks" -d "$TEMP_APK_DIR"; done then
         echo "Error: Failed to unzip '$TEMP_SPLIT_APK_DIR/*.apk'."
         echo "Hint: Ensure the '$TEMP_SPLIT_APK_DIR' directory contains valid split apks."
@@ -257,6 +258,10 @@ handle_apk_installation(){
       exit 1
     fi
     echo "Info: APK installed successfully."
+
+    if [ "$FILE_TYPE" == "BUNDLE" ]; then
+        cleanup_temp_dir $TEMP_SPLIT_APK_DIR
+    fi
 }
 
 # --- Function: Extract package name of the app ---
@@ -279,20 +284,20 @@ run_frida_and_extract_key() {
     source .venv/bin/activate || { echo "Error: Failed to activate virtual environment. Exiting..." >&2; exit 1; }
 
     # Call the python script and capture its output
-    ENCRYPTION_KEY=$(python3 "$frida_python_script" \
+    DECRYPTION_KEY=$(python3 "$frida_python_script" \
         "$PACKAGE_NAME" \
         "$DECRYPT_FUNC_ADD" \
         "$frida_js_hook")
 
     deactivate
 
-    if [ $? -ne 0 ] || [ -z "$ENCRYPTION_KEY" ]; then
+    if [ $? -ne 0 ] || [ -z "$DECRYPTION_KEY" ]; then
       echo "Error: Frida key extraction failed or returned an empty key." >&2
       cleanup_temp_dir $TEMP_APK_DIR
       exit 1 
     fi
 
-    echo "Success: Captured Encryption Key: '$ENCRYPTION_KEY'"
+    echo "Success: Captured Encryption Key: '$DECRYPTION_KEY'"
 }
 
 # --- Function: Decrypt all available .jsc files ---
@@ -305,7 +310,7 @@ decrypt_jsc_file(){
     source .venv/bin/activate || { echo "Error: Failed to activate virtual environment. Exiting..." >&2; exit 1; }
 
     for jsc_file in "${JSC_ARRAY[@]}"; do
-        python3 "$python_decrypt_script" "$jsc_file" "$ENCRYPTION_KEY" "$OUTPUT_PATH"
+        python3 "$python_decrypt_script" "$jsc_file" "$DECRYPTION_KEY" "$OUTPUT_PATH"
     done
 
     cleanup_temp_dir $TEMP_APK_DIR
@@ -349,9 +354,8 @@ main() {
         handle_apk_file
     fi   
     get_package_name
-    # run_frida_and_extract_key
-    decrypt_jsc_file
-    # cleanup_temp_dir $TEMP_APK_DIR                
+    run_frida_and_extract_key
+    decrypt_jsc_file               
 
     echo "Success: All steps completed successfully."
 }
