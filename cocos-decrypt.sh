@@ -149,6 +149,7 @@ check_frida_device() {
     echo "Info: Frida device appears connected and frida-server is responsive."
 }
 
+# --- Function: Check jsc files present or not ---
 check_jsc_file(){
     # --- Find all jsc files and store in array ---
     while IFS= read -r file; do
@@ -232,6 +233,7 @@ handle_and_install_apk_bundle() {
 
 }
 
+# --- Function: Install apk on the device ---
 handle_apk_installation(){
     # --- Install the APK on Device ---
     echo "Info: Installing the APK on device..."
