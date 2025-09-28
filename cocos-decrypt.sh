@@ -34,21 +34,16 @@ confirm() {
 
 # --- Function: Parse Command Line Arguments ---
 parse_args() {
-    if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+    if [ -z "$1" ] || [ -z "$2" ]; then
         usage
     fi
     APK_PATH="$1"
     DECRYPT_FUNC_ADD="$2"
-    OUTPUT_PATH="$3"
+    OUTPUT_PATH=${3:-"."}       # Set output path to current directory by default if none is passed
 
     echo "Info: APK Bundle Path: '$APK_PATH'"
     echo "Info: Base address: '$DECRYPT_FUNC_ADD'"
     echo "Info: Output Path: '$OUTPUT_PATH'"
-
-    if [ ! -d "$OUTPUT_PATH" ]; then
-        echo "Error: Output Directory path does not exist."
-        usage
-    fi
 
     if [ -f "$APK_PATH" ] && [[ "$APK_PATH" =~ \.zip$ ]]; then
         FILE_TYPE="BUNDLE"
@@ -113,6 +108,29 @@ check_cli_tools() {
     echo "Info: All required CLI tools are installed and accessible!"
 }
 
+# --- Function: Setup python environment ---
+setup_python_environment(){
+    if ! command -v python3 &> /dev/null; then
+        echo "Error: Python 3 is required. Please install it." >&2
+        exit 1
+    fi
+
+    if [ ! -d ".venv" ]; then
+        echo "Info: Creating Python Virtual Environment..."
+        python3 -m venv .venv || { echo "Error: Faild to create venv." >&2; exit 1; }
+    fi
+
+    source .venv/bin/activate || { echo "Error: Failed to activate virtual environment. Exiting..." >&2; exit 1; }
+
+    echo "Info: Installing Python Dependencies..."
+    pip3 install -r requirements.txt || { echo "Error: Failed to install Python dependencies" >&2; exit 1;}
+
+    deactivate
+
+    echo "Info: Python Environment is ready!"
+
+}
+
 
 # --- Function: Check Frida Device and Server Status ---
 check_frida_device() {
@@ -144,6 +162,10 @@ check_jsc_file(){
     fi
 
     echo "Found ${#JSC_ARRAY[@]} .jsc files."
+
+    for jsc_file in "${JSC_ARRAY[@]}"; do
+        echo "- $jsc_file"
+    done
 }
 
 # --- Function: Handle APK file ---
@@ -226,7 +248,7 @@ handle_apk_installation(){
     fi
 
     if [ "$INSTALL_EXIT_CODE" -ne 0 ]; then
-      echo "Error: Failed to install APK from '$DISP_PATH'."
+      echo "Error: Failed to install APK from '$DISP_PATH'." >&2
       echo "Hint: Check ADB install/install-multiple output for details. Common issues: signature, ABI, min SDK."
       echo "ADB Install Output:"
       echo "$INSTALL_OUTPUT"
@@ -247,27 +269,47 @@ get_package_name(){
     echo "Info: Package name retrieved: $PACKAGE_NAME"
 }
 
-# ---Function: Run Frida and Extract Key ---
+# --- Function: Run Frida and Extract Key ---
 run_frida_and_extract_key() {
     echo "Info: Starting Frida to hook and capture encryption key..."
     
     local frida_python_script="xxtea_extractor.py"
     local frida_js_hook="cocosdecrypt.js"
     
+    source .venv/bin/activate || { echo "Error: Failed to activate virtual environment. Exiting..." >&2; exit 1; }
+
     # Call the python script and capture its output
     ENCRYPTION_KEY=$(python3 "$frida_python_script" \
         "$PACKAGE_NAME" \
         "$DECRYPT_FUNC_ADD" \
         "$frida_js_hook")
 
+    deactivate
+
     if [ $? -ne 0 ] || [ -z "$ENCRYPTION_KEY" ]; then
       echo "Error: Frida key extraction failed or returned an empty key." >&2
+      cleanup_temp_dir $TEMP_APK_DIR
       exit 1 
     fi
 
     echo "Success: Captured Encryption Key: '$ENCRYPTION_KEY'"
+}
 
-    # Now you can use the ENCRYPTION_KEY variable for your next steps
+# --- Function: Decrypt all available .jsc files ---
+decrypt_jsc_file(){
+    echo "Info: Decrypting .jsc files with extracted key..."
+
+    local python_decrypt_script="decrypt.py"
+    # local output_path
+
+    source .venv/bin/activate || { echo "Error: Failed to activate virtual environment. Exiting..." >&2; exit 1; }
+
+    for jsc_file in "${JSC_ARRAY[@]}"; do
+        python3 "$python_decrypt_script" "$jsc_file" "$ENCRYPTION_KEY" "$OUTPUT_PATH"
+    done
+
+    cleanup_temp_dir $TEMP_APK_DIR
+
 }
 
 # --- Function: Cleanup Temporary Directory (called on exit or failure) ---
@@ -285,14 +327,21 @@ cleanup_temp_dir() {
     fi
 }
 
+# --- Function: Environment Setup check ---
+check_environment_setup(){
+    echo "Info: Checking and setting up the environment before running the script..."
+    check_cli_tools   
+    setup_python_environment       
+    check_frida_device 
+}
+
 # --- Main Script Logic ---
 main() {
     # Ensure temporary directory is cleaned up on script exit (even if errors occur)
     trap cleanup_temp_dir EXIT
 
-    parse_args "$@"   
-    check_cli_tools          
-    check_frida_device       
+    parse_args "$@"    
+    check_environment_setup     
 
     if [ "$FILE_TYPE" == "BUNDLE" ]; then
         handle_and_install_apk_bundle 
@@ -300,8 +349,9 @@ main() {
         handle_apk_file
     fi   
     get_package_name
-    run_frida_and_extract_key
-    cleanup_temp_dir $TEMP_APK_DIR                
+    # run_frida_and_extract_key
+    decrypt_jsc_file
+    # cleanup_temp_dir $TEMP_APK_DIR                
 
     echo "Success: All steps completed successfully."
 }
