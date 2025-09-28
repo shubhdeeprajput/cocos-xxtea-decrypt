@@ -1,5 +1,5 @@
 cffi==2.0.0
-frida==17.3.2
+frida==16.5.1
 pycparser==2.23
 setuptools==80.9.0
 xxtea-py==1.0.3

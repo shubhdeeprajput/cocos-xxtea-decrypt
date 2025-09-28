@@ -276,7 +276,7 @@ get_package_name(){
 
 # --- Function: Run Frida and Extract Key ---
 run_frida_and_extract_key() {
-    echo "Info: Starting Frida to hook and capture encryption key..."
+    echo "Info: Starting Frida to hook and capture decryption key..."
     
     local frida_python_script="xxtea_extractor.py"
     local frida_js_hook="cocosdecrypt.js"
@@ -297,7 +297,7 @@ run_frida_and_extract_key() {
       exit 1 
     fi
 
-    echo "Success: Captured Encryption Key: '$DECRYPTION_KEY'"
+    echo "Success: Captured Decryption Key: $DECRYPTION_KEY"
 }
 
 # --- Function: Decrypt all available .jsc files ---
