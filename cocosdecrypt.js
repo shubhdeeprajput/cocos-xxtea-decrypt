@@ -18,9 +18,9 @@ function hookDecryptFunction(module, ghidraAddress) {
     });
 }
 
-function hookCocosCreatorDecrypt(func_address) {
+function hookCocosCreatorDecrypt(func_address, cocosso) {
     let address = func_address //0x00d69db4  #addess of the xxtea_decrypt function 
-    let soName = 'libcocos.so'
+    let soName = cocosso
     let baseAddr = Module.findBaseAddress(soName)
 
     // The below code will look for the so file being loaded if
@@ -50,4 +50,5 @@ function hookCocosCreatorDecrypt(func_address) {
 
 var func_address = 'DECRYPT_FUNC_ADD'; 
 
-hookCocosCreatorDecrypt(func_address)
+hookCocosCreatorDecrypt(func_address, 'libcocos.so')
+hookCocosCreatorDecrypt(func_address, 'libcocos2djs.so')
